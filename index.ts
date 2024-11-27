@@ -5,18 +5,18 @@ import {
   address,
   appendTransactionMessageInstruction,
   createKeyPairSignerFromBytes,
+  createNoopSigner,
   createSolanaRpc,
   createSolanaRpcSubscriptions,
   createTransactionMessage,
   generateKeyPairSigner,
   getBase64EncodedWireTransaction,
-  getSignatureFromTransaction,
   IInstruction,
+  partiallySignTransactionMessageWithSigners,
   pipe,
   sendAndConfirmTransactionFactory,
   setTransactionMessageFeePayerSigner,
   setTransactionMessageLifetimeUsingBlockhash,
-  signTransactionMessageWithSigners,
 } from '@solana/web3.js'
 import {
   getCreateAccountInstruction,
@@ -42,10 +42,13 @@ const sendAndConfirmTransaction = sendAndConfirmTransactionFactory({
 })
 
 const instructionData = Buffer.alloc(8)
-instructionData.writeUInt8(2)
+instructionData.writeUInt8(4)
 
 async function main() {
   const signer = await createKeyPairSignerFromBytes(keypairBytes)
+  const andySigner = createNoopSigner(
+    address('Andy1111111111111111111111111111111111111111')
+  )
   const { value: latestBlockhash } = await rpc.getLatestBlockhash().send()
 
   // Accounts
@@ -69,12 +72,16 @@ async function main() {
         role: AccountRole.WRITABLE,
       },
       {
-        address: signer.address,
-        role: AccountRole.WRITABLE_SIGNER,
+        address: andySigner.address,
+        role: AccountRole.READONLY_SIGNER,
       },
       {
         address: SYSTEM_PROGRAM_ADDRESS,
         role: AccountRole.READONLY,
+      },
+      {
+        address: signer.address,
+        role: AccountRole.WRITABLE_SIGNER,
       },
     ],
     data: instructionData,
@@ -88,23 +95,31 @@ async function main() {
     (tx) => appendTransactionMessageInstruction(instruction, tx)
   )
 
-  const signedTransaction = await signTransactionMessageWithSigners(
+  // * SENDING TRANSACTION
+
+  //   const signedTransaction = await signTransactionMessageWithSigners(
+  //     transactionMessage
+  //   )
+
+  //   await sendAndConfirmTransaction(signedTransaction, {
+  //     commitment: 'confirmed',
+  //   })
+
+  //   const signature = getSignatureFromTransaction(signedTransaction)
+
+  // * SIMULATION
+
+  const signedTransaction = await partiallySignTransactionMessageWithSigners(
     transactionMessage
   )
+
   const encodedTransaction = getBase64EncodedWireTransaction(signedTransaction)
-  const signature = getSignatureFromTransaction(signedTransaction)
 
-  await sendAndConfirmTransaction(signedTransaction, {
-    commitment: 'confirmed',
-  })
+  const simulation = await rpc
+    .simulateTransaction(encodedTransaction, { encoding: 'base64' })
+    .send()
 
-  console.log(signature)
-
-  //   const simulation = await rpc
-  //     .simulateTransaction(encodedTransaction, { encoding: 'base64' })
-  //     .send()
-
-  //   console.log(simulation)
+  console.log(simulation)
 }
 
 main()
